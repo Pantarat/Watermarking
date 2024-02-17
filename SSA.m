@@ -1,12 +1,13 @@
 [audioData,fs] = audioread("Audio_Source/sample_data.wav");
 
 % Define variables
-l = 50;
-u = 100;
-b = '10110';
+l = 10;
+u = 25;
+b = '10110011101';
+L = 50;
 
 d_length = length(audioData);
-N = 10000;
+N = 1000;
 i = 1;
 % separate frame to non-overlapping
 F = zeros(N, floor(d_length / N));
@@ -23,15 +24,14 @@ for j = 1:size(F,2)
     if length(b) >= j
         bit = b(j);
         f = F(:,j);
-        L = 500;
         K = N - L + 1;
         X = zeros(L,K);
         for i = 1:K
             X(:,i) = f(i:L+i-1);
         end
-        [U,D,V] = svd(X,"vector","econ");
+        [U,D,V] = svd(X,"vector");
         
-        plot_in_name = sprintf('./Plot_Output/Original%d.png',j);
+        plot_in_name = sprintf('./Output/Plot_Output/Original%d.png',j);
         plot(D,"o");
         saveas(gcf, plot_in_name)
         
@@ -43,12 +43,15 @@ for j = 1:size(F,2)
         end
         D(l:u) = modified;
 
-        plot_out_name = sprintf('./Plot_Output/Modified%d.png',j);
+        plot_out_name = sprintf('./Output/Plot_Output/Modified%d.png',j);
         plot(D,"o");
         saveas(gcf, plot_out_name)
         
         % Reassemble
-        Y = U*diag(D)*V';
+        D_matrix = diag(D);
+        
+        % Reconstruct the matrix Y
+        Y = U*diag(D)*V(:,1:size(U,1))';
         output = zeros(N,1);
         
         Ls = size(X,1);
@@ -92,4 +95,4 @@ outData = [outData(:);remain(:)];
 
 % Write Output
 outData = normalize(outData, 'range', [-1 1]);
-audiowrite("Audio_Output/Sample1.wav",outData,fs);
+audiowrite("Output/Audio_Output/Sample1.wav",outData,fs);
