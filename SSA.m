@@ -1,48 +1,58 @@
 [audioData,fs] = audioread("Audio_Source/sample_data.wav");
 
 % Define variables
-l = 10;
-u = 25;
-b = '10110011101';
-L = 50;
+l = 10;                         % lower boundary to modify
+u = 25;                         % upper boundary to modify
+b = '10110011101';              % bits to be inserted
+L = 50;                         % length of lagged vector
 
-d_length = length(audioData);
-N = 1000;
+d_length = length(audioData);   % length of audio data
+N = 1000;                       % length of frame
+                         
+% separate data to non-overlapping frame and stores in frame matrix
+F = zeros(N, floor(d_length / N));  % initiate frame matrix with 0
 i = 1;
-% separate frame to non-overlapping
-F = zeros(N, floor(d_length / N));
 while N * i <= d_length
-    F(:,i) = audioData(((i - 1) * N + 1) : (i * N));
+    startindex = ((i - 1) * N + 1);
+    endindex = (i * N);
+    F(:,i) = audioData(startindex : endindex);  % replace column of 0 with frame (audio data)
     i = i + 1;
 end
 
-remain = audioData((i-1) * N + 1: end);
+remain = audioData((i-1) * N + 1: end);         % remainder of audio data
 
-Fs = zeros(N, floor(d_length / N));
+Fs = zeros(N, floor(d_length / N));     % initiate modified frame matrix
 
+% embed data (b)
 for j = 1:size(F,2)
     if length(b) >= j
-        bit = b(j);
-        f = F(:,j);
-        K = N - L + 1;
-        X = zeros(L,K);
+        bit = b(j);                     % get the bit
+        f = F(:,j);                     % get the frame
+        K = N - L + 1;                  % number of columns of hankel matrix
+        X = zeros(L,K);                 % initiate hankel matrix
+
+        % create hankel matrix from frame
         for i = 1:K
             X(:,i) = f(i:L+i-1);
         end
+
+        % SVD
         [U,D,V] = svd(X,"vector");
         
+        % plot original sqrt of eigen values
         plot_in_name = sprintf('./Output/Plot_Output/Original%d.png',j);
         plot(D,"o");
         saveas(gcf, plot_in_name)
         
         % Modify
         if bit == '1'
-            modified = D(l);
+            modified = D(l);        % get the sqrt of eigen value at the lower boundary
         else
-            modified = D(u);
+            modified = D(u);        % get the sqrt of eigen value at the upper boundary
         end
-        D(l:u) = modified;
+        D(l:u) = modified;          % modify the eigen value from lower to upper boundary
 
+        % plot modified sqrt of eigen values
         plot_out_name = sprintf('./Output/Plot_Output/Modified%d.png',j);
         plot(D,"o");
         saveas(gcf, plot_out_name)
@@ -83,7 +93,7 @@ for j = 1:size(F,2)
         output = F(:,j);
     end
 
-    Fs(:,j) = output;
+    Fs(:,j) = output;           % append the modified frame to Fs
 
 end
 
