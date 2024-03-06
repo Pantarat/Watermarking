@@ -1,5 +1,6 @@
 clear
 close all
+clc
 
 %This code will produce signal and sum SVD with specific number for every frame
 
@@ -13,7 +14,7 @@ frame_no = 100;         % Number of frames to use
 L = round(frame_sz/2);  % Set window length for trajectory matrix to half of frame = number of SV components
 threshold = 0.05;
 smr = 0;
-sumindex = 32;
+sumindex = 32;          % Number of SV components in a group
 
 frame_szf = 512;                           % Frame size for the PAM model
 nfrm = 100;                                % Number of frames for PAM
@@ -29,6 +30,7 @@ for sound=1:9
     [x,~] = audioread(AudioFile);
     cd ('../..')
 
+    fprintf('Finish loading speech %d\n',sound)
 
 
     SX = zeros(frame_sz, frame_no);
@@ -43,6 +45,8 @@ for sound=1:9
     en_normal = normalize(energy,"range");
     cd ..
 
+    fprintf('Finish getting energy of speech %d\n',sound)
+
     % ---Decompose individual components of SVD to see its interaction with frequency
     % PlotWholeFrameWith no_dat
     Signal_origi=x(1:frame_sz*frame_no);
@@ -52,7 +56,6 @@ for sound=1:9
     Result = zeros(frame_sz, frame_sz/2);
     KeepResult = zeros(frame_sz, frame_sz/2, frame_no);
     for frameMusic=1:frame_no
-        Sumresult=0;
         [U,D,V] = svd(MatArr(:,:,frameMusic));
         for k = 1:frame_sz/2    % Decompose into frame_sz/2 top components = 1024/2 = 512
             Unew = U(:,k);
@@ -65,13 +68,16 @@ for sound=1:9
     end
     cd ..
 
+    fprintf('Finish SVD and reconstruct of speech %d\n',sound)
+
+
 
     % ---Create groupings of SVD components' signal to determine frequency-index relationship
     NumberOfGroupSignal = (frame_sz / 2) / sumindex;         % Number of groups of svd signals = #svd / group_sz
+    GroupOfSubSignalAllframe = zeros(frame_sz, NumberOfGroupSignal, frame_no);
 
     for ChooseFrameAt = 1:frame_no
         KeepMat = KeepResult(:,:,ChooseFrameAt);  % Get all svd components' matrices of each frame
-        GroupOfSubSignalAllframe = zeros(frame_sz, NumberOfGroupSignal, frame_no);
 
         startindex = 1;
         for l = 1:NumberOfGroupSignal
@@ -79,7 +85,8 @@ for sound=1:9
             startindex = startindex + sumindex;
         end
     end
-
+    
+    fprintf('Finish grouping SV component matrices of speech %d\n',sound)
 
 
     %---Find suitable index to embed with PAM
@@ -88,6 +95,7 @@ for sound=1:9
     f = (0 : frame_szf/2-1) / frame_szf*fs;    % Predetermined frequency bins used to map index from SMR
 
     SXf = zeros(frame_szf, nfrm);
+    newSMR = zeros(nfrm, 256);
     allframeindex = zeros(nfrm,1);
 
     SMR = zeros(nfrm,32);   %SMR of all frames, each with 32 frequencies
@@ -122,7 +130,6 @@ for sound=1:9
         cd ..
 
         % Spread the SMR into 8 identicle SMR for each frequency to increase resolution
-        newSMR = zeros(nfrm, 256);
         for j = 1:256
             newSMR(i,j) = SMR(i,ceil(j/8));
         end
@@ -132,7 +139,7 @@ for sound=1:9
         index=256;
         % Note: SMR generally decreases for higher freqs b/c human cannot hear high freqs well
         % Find the highest SMR below the set threshold and get its index
-        while newSMR(i,index) < smr & index > 1
+        while newSMR(i,index) < frame_psd_dBSPL(index,i) & index > 1
             keepindex=index;
             index=index-1;
         end
@@ -142,6 +149,8 @@ for sound=1:9
     % use mean index of all frames closest to threshold to start embed
     usedindex = round(mean(allframeindex));
     realfreq = f(usedindex);
+
+    fprintf('Finish suggesting frequency for speech %d\n',sound)
 
 
     %---Find which groups of index (per frame) is suitable for embed
@@ -183,6 +192,8 @@ for sound=1:9
         end
 
     end
+
+    fprintf('Finish mapping frequency to index for speech %d\n',sound)
 
 
     %---Embedding process
@@ -232,5 +243,5 @@ for sound=1:9
     cd ('../..')
     cd ('../')
 
-    disp('Finish embed speech ');
+    fprintf('Finish embed speech %d\n\n', sound)
 end

@@ -13,7 +13,7 @@ frame_no = 100;         % Number of frames to use
 L = round(frame_sz/2);  % Set window length for trajectory matrix to half of frame = number of SV components
 threshold = 0.05;
 smr = 0;
-sumindex = 32;
+sumindex = 32;          % Number of SV components in a group
 
 frame_szf = 512;                           % Frame size for the PAM model
 nfrm = 100;                                % Number of frames for PAM
@@ -21,7 +21,7 @@ nfrm = 100;                                % Number of frames for PAM
 fine_tune = 0.5;
 
 
-for sound=1:9
+for sound=1:1
 
     % ---Load Sounds
     cd('Audio_Source/Host')
@@ -29,10 +29,11 @@ for sound=1:9
     [x,~] = audioread(AudioFile);
     cd ('../..')
 
+    fprintf('Finish loading speech %d\n',sound)
 
 
     SX = zeros(frame_sz, frame_no);
-    energy = zeros(frame_no);
+    energy = zeros(frame_no,1);
     MatArr = zeros(L, frame_sz-L+1, frame_no);
     cd('Tools')
     for j = 1:frame_no
@@ -42,6 +43,8 @@ for sound=1:9
     end
     en_normal = normalize(energy,"range");
     cd ..
+
+    fprintf('Finish getting energy of speech %d\n',sound)
 
     % ---Decompose individual components of SVD to see its interaction with frequency
     % PlotWholeFrameWith no_dat
@@ -66,9 +69,10 @@ for sound=1:9
     cd ..
 
 
+
     % ---Create groupings of SVD components' signal to determine frequency-index relationship
     NumberOfGroupSignal = (frame_sz / 2) / sumindex;         % Number of groups of svd signals = #svd / group_sz
-    
+
     for ChooseFrameAt = 1:frame_no
         KeepMat = KeepResult(:,:,ChooseFrameAt);  % Get all svd components' matrices of each frame
         GroupOfSubSignalAllframe = zeros(frame_sz, NumberOfGroupSignal, frame_no);
@@ -79,7 +83,8 @@ for sound=1:9
             startindex = startindex + sumindex;
         end
     end
-
+    
+    fprintf('Finish reconstruct and group SV component matrices of speech %d',sound)
 
 
     %---Find suitable index to embed with PAM
@@ -88,7 +93,7 @@ for sound=1:9
     f = (0 : frame_szf/2-1) / frame_szf*fs;    % Predetermined frequency bins used to map index from SMR
 
     SXf = zeros(frame_szf, nfrm);
-    allframeindex = zeros(nfrm);
+    allframeindex = zeros(nfrm,1);
 
     SMR = zeros(nfrm,32);   %SMR of all frames, each with 32 frequencies
     % min_threshold_subband = zeros(nfrm,256);
@@ -103,7 +108,7 @@ for sound=1:9
     % newSMR = zeros(nfrm,256);
 
     xf = x(1:nfrm*frame_szf,1); % Get original signal from first up to last frame (frame_no * frame_szf)
-    
+
     for i = 1:nfrm
         SXf(:,i) = xf(1+frame_szf*(i-1):frame_szf*i);   % Split original signal into non-overlapping frames
         %find SMR and frame_psd
@@ -118,7 +123,7 @@ for sound=1:9
             ~, ...
             ~, ...
             ~ ...
-        ] = MPEG1_psycho_acoustic_model1JK(SXf(:,i));   % Get signal-to-mask ratio of each frame
+            ] = MPEG1_psycho_acoustic_model1JK(SXf(:,i));   % Get signal-to-mask ratio of each frame
         cd ..
 
         % Spread the SMR into 8 identicle SMR for each frequency to increase resolution
@@ -143,13 +148,14 @@ for sound=1:9
     usedindex = round(mean(allframeindex));
     realfreq = f(usedindex);
 
+    fprintf('Finish suggesting frequency for speech %d',sound)
+
 
     %---Find which groups of index (per frame) is suitable for embed
 
     suggestf = realfreq;
     f_frame = (0:(frame_sz)/2-1)/frame_sz*fs;
     GroupOfUseAllFrame = zeros(1, frame_no);
-    MatArrModi = zeros(L, frame_sz-L+1, frame_no);
     GroupOfSubSignal_fft2 = zeros(512, NumberOfGroupSignal);
     index = find(f_frame == suggestf);  % Get index of frame frequency that corresponds to suggested freq from PAM
 
@@ -166,7 +172,7 @@ for sound=1:9
         for i=1:NumberOfGroupSignal
             Normalize_fft2_pergroup = Normalize_fft2(:,i);  % Get a group of SVD sum signal in freq domain
 
-             % Compare the sum of major freq.(leftside) with masked freq.(rightside)
+            % Compare the sum of major freq.(leftside) with masked freq.(rightside)
             LeftSide = sum(Normalize_fft2_pergroup(1:index));
             RightSide = sum(Normalize_fft2_pergroup(index+1:L));
             if RightSide*fine_tune > LeftSide
@@ -185,36 +191,36 @@ for sound=1:9
 
     end
 
+    fprintf('Finish mapping frequency to index for speech %d',sound)
+
 
     %---Embedding process
-    i2=L;       % modify all 
+    i2=L;       % modify indices up to the last
+    MatArrModi = zeros(L, frame_sz-L+1, frame_no);
     cd('Tools')
-    skip=0;
     for j = 1:frame_no
-        i1 = (GroupOfUseAllFrame(j)-1)*sumindex+1;  % Get SVD group number and convert back to svd index#
+        i1 = (GroupOfUseAllFrame(j) - 1) * sumindex + 1;
 
-        %check if the frame is silence
-        if en_normal(j) < threshold
-            skip=skip+1;
-            MatArrModi(:,:,j) = MatArr(:,:,j);
+        % Check if the frame is not silent (has energy above the threshold)
+        if en_normal(j) >= threshold
+            embedPictureIndexUsed = mod(embedPictureIndex - 1, length(imageBinary)) + 1;
+
+            MatArrModi(:,:,j) = ModifyBitsLinear(MatArr(:,:,j), i1, i2, imageBinary(embedPictureIndexUsed));
+
+            embedPictureIndex = embedPictureIndex + 1;
         else
-            embedPictureIndexUsed=embedPictureIndex-skip;
-            if embedPictureIndexUsed>length(imageBinary)
-                embedPictureIndexUsed=1;
-            end
-            MatArrModi(:,:,j) = ModifyBitsLinear(MatArr(:,:,j),i1,i2,imageBinary(embedPictureIndexUsed)); % Modify using i1 and i2
+            % Frame is silent, no modification needed
+            MatArrModi(:,:,j) = MatArr(:,:,j);
         end
-        embedPictureIndex=embedPictureIndex+1;
     end
     cd ..
 
-    % Reconstruction (convert matrix back to signal)
+
+    %---Reconstruction (convert matrix back to signal)
     cd('Tools')
-    y = [];
-    yModi = [];
+    yModi = zeros(frame_no, 1);
     for j = 1:frame_no
-        SYModi(:,j) = Mat2Sig(MatArrModi(:,:,j),frame_sz,L);
-        yModi = [yModi;SYModi(:,j)];
+        yModi(frame_sz*(j-1)+1 : frame_sz*j) = Mat2Sig(MatArrModi(:,:,j),frame_sz,L);
     end
     cd ..
 
@@ -222,7 +228,8 @@ for sound=1:9
     % audiowrite func to save audio file
     cd('Output/Audio_Output/Host_Edited');
     audiowrite(['speech_' num2str(sound) '.wav'],yModi,fs);
-    cd ../..
+    cd ('../..')
+
     % Define the base file name
     baseFilename = 'GroupOfUseAllFramespeech';
     % Number to add to the file name
@@ -231,8 +238,8 @@ for sound=1:9
     filename = sprintf('%s_%d.mat', baseFilename, fileNumber);
     cd('Data_Output/GroupOfUseAllFrame');
     save(filename, 'GroupOfUseAllFrame');
-    cd ../..
-    cd ..
+    cd ('../..')
+    cd ('../')
 
-    disp('Finish embed speech ');
+    fprintf('Finish embed speech %d', sound)
 end
