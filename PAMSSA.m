@@ -13,7 +13,7 @@ frame_sz = 1024;        % Number of data points for each frame
 frame_no = 100;         % Number of frames to use
 L = round(frame_sz/2);  % Set window length for trajectory matrix to half of frame = number of SV components
 threshold = 0.05;
-smr = 0;
+beta = 0;               % SMR Threshold
 sumindex = 32;          % Number of SV components in a group
 
 frame_szf = 512;                           % Frame size for the PAM model
@@ -139,7 +139,7 @@ for sound=1:9
         index=256;
         % Note: SMR generally decreases for higher freqs b/c human cannot hear high freqs well
         % Find the highest SMR below the set threshold and get its index
-        while newSMR(i,index) < frame_psd_dBSPL(index,i) & index > 1
+        while newSMR(i,index) < beta & index > 1
             keepindex=index;
             index=index-1;
         end
@@ -166,7 +166,7 @@ for sound=1:9
 
         for k=1:NumberOfGroupSignal
             GroupOfSubSignal_fft = fft(GroupOfSubSignalAllframe(:,k,ChooseFrameAt));    % Get Sum signal of group svds and perform FFT
-            GroupOfSubSignal_fft2(:,k) = abs(GroupOfSubSignal_fft(1:length(GroupOfSubSignal_fft)/2));   % Get the first half of freqs and only get their size
+            GroupOfSubSignal_fft2(:,k) = abs(GroupOfSubSignal_fft(1:length(GroupOfSubSignal_fft)/2));   % Get the first half of freqs(BC fft is symmetrical along Y axis) and only get their size
         end
 
         Normalize_fft2 = mat2gray(GroupOfSubSignal_fft2);   % Normalize to range of 0-1
